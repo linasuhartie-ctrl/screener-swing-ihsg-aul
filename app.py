@@ -103,9 +103,7 @@ TICKER_UNIVERSE = [
     "LIFE.JK","PNLF.JK","ASRM.JK","ABDA.JK","MREI.JK","LPGI.JK",
 ]
 # Deduplicate jaga urutan
-_seen = set()
-TICKER_UNIVERSE = [t for t in TICKER_UNIVERSE if not (_seen.add(t) or t in _seen)]
-
+TICKER_UNIVERSE = list(dict.fromkeys(TICKER_UNIVERSE))
 
 DATA_PERIOD   = "6mo"
 DATA_INTERVAL = "1d"
