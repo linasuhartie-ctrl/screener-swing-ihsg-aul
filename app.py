@@ -1,7 +1,7 @@
 """
 ================================================================================
  IHSG EoD SWING TRADING SCREENER DASHBOARD
- Author  : Senior Quantitative Developer
+ Author  : aulyeah
  Stack   : Streamlit · yfinance · ta · Plotly · requests
  Market  : Indonesian Stock Exchange (IDX / IHSG)
  Strategy: End-of-Day (EoD) Swing Trading
@@ -145,7 +145,7 @@ def build_universe_data(tickers: list) -> dict:
         if df is not None:
             universe[ticker] = df
         progress.progress((i + 1) / total, text=f"📡 {ticker} ({i+1}/{total})")
-        time.sleep(0.01)  # Dipercepat agar Streamlit tidak timeout saat fetch 500 data
+        time.sleep(0.01)  # Dipercepat agar Streamlit tidak timeout
     progress.empty()
     return universe
 
@@ -168,7 +168,7 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 5.  SCREENER ENGINE
+# 5.  SCREENER ENGINE (Optimasi Rate Limit)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def run_screener(
@@ -180,11 +180,11 @@ def run_screener(
 ) -> pd.DataFrame:
     """
     Filter semua kriteria swing EoD:
-    1. Value      : PBV < max_pbv ATAU PER < max_per
-    2. Likuiditas : Avg volume 20H > min_volume
-    3. Tren       : Close > SMA 50
-    4. Bounce     : Close > SMA 20
-    5. Momentum   : MACD histogram cross positif ATAU RSI cross above threshold
+    1. Likuiditas : Avg volume 20H > min_volume
+    2. Tren       : Close > SMA 50
+    3. Bounce     : Close > SMA 20
+    4. Momentum   : MACD histogram cross positif ATAU RSI cross above threshold
+    5. Value      : PBV < max_pbv ATAU PER < max_per (DIPANGGIL TERAKHIR)
     """
     rows = []
     for ticker, df in universe_data.items():
@@ -194,27 +194,23 @@ def run_screener(
 
         latest = df_ind.iloc[-1]
         prev   = df_ind.iloc[-2]
-        fnd    = fetch_fundamentals(ticker)
-        per    = fnd["PER"]
-        pbv    = fnd["PBV"]
 
-        # 1. VALUE
-        value_ok = (pbv > 0 and pbv < max_pbv) or (0 < per < max_per)
-
-        # 2. LIKUIDITAS
+        # 1. LIKUIDITAS
         avg_vol  = df_ind["Volume"].iloc[-20:].mean()
-        liq_ok   = avg_vol > min_volume
+        if avg_vol <= min_volume:
+            continue
 
-        # 3. TREN
+        # 2. TREN & BOUNCE
         close    = float(latest["Close"])
         sma50    = latest.get("SMA_50", float("nan"))
+        sma20    = latest.get("SMA_20", float("nan"))
+        
         trend_ok = close > sma50 if pd.notna(sma50) else False
-
-        # 4. BOUNCE
-        sma20     = latest.get("SMA_20", float("nan"))
         bounce_ok = close > sma20 if pd.notna(sma20) else False
+        if not (trend_ok and bounce_ok):
+            continue
 
-        # 5. MOMENTUM
+        # 3. MOMENTUM
         hist_now  = latest.get("MACDh_12_26_9", float("nan"))
         hist_prev = prev.get("MACDh_12_26_9",   float("nan"))
         macd_cross = (
@@ -230,8 +226,17 @@ def run_screener(
         )
 
         momentum_ok = macd_cross or rsi_cross
+        if not momentum_ok:
+            continue
 
-        if value_ok and liq_ok and trend_ok and bounce_ok and momentum_ok:
+        # 4. VALUE (Panggil Yahoo Fundamental hanya jika lolos teknikal)
+        fnd = fetch_fundamentals(ticker)
+        per = fnd["PER"]
+        pbv = fnd["PBV"]
+        
+        value_ok = (pbv > 0 and pbv < max_pbv) or (0 < per < max_per)
+
+        if value_ok:
             signals = []
             if macd_cross: signals.append("MACD Cross")
             if rsi_cross:  signals.append(f"RSI>{rsi_threshold:.0f}")
@@ -539,22 +544,20 @@ def main():
             m3.metric("RSI(14)", f"{row['RSI (14)']:.1f}" if pd.notna(row["RSI (14)"]) else "–")
             m4.metric("Signal",  row["Signal"])
 
-    # Snapshot semua saham
+    # Snapshot semua saham (Hanya Ticker dan Teknikal, tidak panggil Yahoo Fundamental)
     with st.expander(f"🌐 Snapshot Semua {loaded} Saham"):
         snap = []
         for ticker, df in universe_data.items():
-            d   = compute_indicators(df).iloc[-1]
-            fnd = fetch_fundamentals(ticker)
+            d = compute_indicators(df).iloc[-1]
+            vol_mean = df["Volume"].rolling(20).mean().iloc[-1] if len(df) >= 20 else 0
+            
             snap.append({
                 "Ticker":   ticker,
-                "Nama":     fnd["name"],
-                "Sektor":   fnd["sector"],
                 "Close":    round(float(d["Close"]), 0),
                 "SMA 20":   round(d.get("SMA_20", float("nan")), 0),
                 "SMA 50":   round(d.get("SMA_50", float("nan")), 0),
                 "RSI (14)": round(d.get("RSI_14",  float("nan")), 1),
-                "PER":      fnd["PER"],
-                "PBV":      fnd["PBV"],
+                "Vol 20D":  round(vol_mean, 0),
             })
         st.dataframe(pd.DataFrame(snap), use_container_width=True)
 
