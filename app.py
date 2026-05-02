@@ -102,10 +102,10 @@ TICKER_UNIVERSE = [
     "BBLD.JK","MFIN.JK","BFIN.JK","VRNA.JK","ADMF.JK","IMJS.JK","JMAS.JK",
     "LIFE.JK","PNLF.JK","ASRM.JK","ABDA.JK","MREI.JK","LPGI.JK",
 ]
-
 # Deduplicate jaga urutan
 _seen = set()
 TICKER_UNIVERSE = [t for t in TICKER_UNIVERSE if not (_seen.add(t) or t in _seen)]
+
 
 DATA_PERIOD   = "6mo"
 DATA_INTERVAL = "1d"
