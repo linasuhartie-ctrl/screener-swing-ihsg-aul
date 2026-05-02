@@ -457,8 +457,8 @@ def style_df(df: pd.DataFrame):
     }
     return (
         df.style
-          .applymap(rsi_clr, subset=["RSI (14)"])
-          .applymap(sig_clr, subset=["Signal"])
+          .map(rsi_clr, subset=["RSI (14)"])
+          .map(sig_clr, subset=["Signal"])
           .format(fmt, na_rep="–")
     )
 
