@@ -11,7 +11,7 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta
+import ta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import requests
@@ -127,32 +127,16 @@ def build_universe_data(tickers: list[str]) -> dict[str, pd.DataFrame]:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Append technical indicators to an OHLCV DataFrame using pandas-ta.
-
-    Indicators added
-    ----------------
-    SMA_20, SMA_50  — Simple Moving Averages
-    RSI_14          — Relative Strength Index (14-period)
-    MACD_12_26_9    — MACD line
-    MACDh_12_26_9   — MACD histogram
-    MACDs_12_26_9   — MACD signal line
-    """
     df = df.copy()
-
-    # SMA
-    df["SMA_20"] = ta.sma(df["Close"], length=20)
-    df["SMA_50"] = ta.sma(df["Close"], length=50)
-
-    # RSI
-    df["RSI_14"] = ta.rsi(df["Close"], length=14)
-
-    # MACD  (returns DataFrame; merge back)
-    macd_df = ta.macd(df["Close"], fast=12, slow=26, signal=9)
-    if macd_df is not None:
-        df = pd.concat([df, macd_df], axis=1)
-
+    df["SMA_20"] = df["Close"].rolling(window=20).mean()
+    df["SMA_50"] = df["Close"].rolling(window=50).mean()
+    df["RSI_14"] = ta.momentum.RSIIndicator(df["Close"], window=14).rsi()
+    macd = ta.trend.MACD(df["Close"], window_slow=26, window_fast=12, window_sign=9)
+    df["MACD_12_26_9"]  = macd.macd()
+    df["MACDh_12_26_9"] = macd.macd_diff()
+    df["MACDs_12_26_9"] = macd.macd_signal()
     return df
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
